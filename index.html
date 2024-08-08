@@ -47,7 +47,7 @@
             <span class="mdc-button__label">ENABLE WEBCAM</span>
         </button>
         <div style="position: relative;">
-            <video id="webcam" style="position: absolute; width: 1280px; height: 768px;" autoplay playsinline></video>
+            <video id="webcam" style="position: absolute; width: 640px; height: 512px;" autoplay playsinline></video>
             <canvas class="output_canvas" id="output_canvas" style="position: absolute; left: 0px; top: 0px;"></canvas>
             <div id="threejs-container"></div>
         </div>
@@ -57,6 +57,8 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script type="module">
+        const height = 640
+        const width = 512
         import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
 
         const demosSection = document.getElementById("liveView");
@@ -124,7 +126,7 @@
         // Three.js setup
         const threeJsContainer = document.getElementById('threejs-container');
         const scene = new THREE.Scene();
-        const aspect = window.innerWidth / window.innerHeight;
+        const aspect = width / height;
         const frustumSize = 1;
         const camera = new THREE.OrthographicCamera(
             frustumSize * aspect / -2,
@@ -135,9 +137,8 @@
             1000
         );
         const renderer = new THREE.WebGLRenderer({ alpha: true });
-        renderer.setSize(1280, 768); // Match video dimensions
+        renderer.setSize(width, height); // Match video dimensions
 
-        renderer.setSize(window.innerWidth, window.innerHeight);
         threeJsContainer.appendChild(renderer.domElement);
 
         const geometry = new THREE.ConeGeometry(0.05, 0.15, 32);
@@ -154,11 +155,11 @@
         animate();
 
         async function predictWebcam() {
-            canvasElement.style.width = 1280 + "px";
-            canvasElement.style.height = 768 + "px";
+            canvasElement.style.width = width + "px";
+            canvasElement.style.height = height + "px";
             console.log(canvasElement.style.width, ' ', canvasElement.style.height)
-            canvasElement.width = video.videoWidth;
-            canvasElement.height = video.videoHeight;
+            canvasElement.width = width;
+            canvasElement.height = height;
 
             if (runningMode === "IMAGE") {
                 runningMode = "VIDEO";
@@ -196,10 +197,6 @@
             const y = -(tip.y - 0.5) * frustumSize;
             const z = (tip.z - 0.5) * frustumSize; // Adjusted to positive depth values
 
-            /* const x = tip.x * 1280
-            const y = tip.y * 768
-            const z = tip.z * 1280 */
-
             cone.position.set(x, y, z);
 
             // Calculate rotation
@@ -210,8 +207,6 @@
             const angleX = Math.atan2(dy, dz);
             const angleY = Math.atan2(dx, dz);
 
-            // Rotate the cone around the x-axis by 90 degrees and adjust for other rotations
-            cone.rotation.set(angleX + Math.PI / 2, angleY, 0);
         }
     </script>
 </body>
