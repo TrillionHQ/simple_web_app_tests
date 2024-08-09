@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hand Landmark Detection with 3D Cone</title>
+    <title>Hand Landmark Detection with 3D pyramid</title>
     <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
     <style>
         body {
@@ -40,14 +40,14 @@
     </style>
 </head>
 <body>
-    <h1>Hand Landmark Detection with 3D Cone</h1>
+    <h1>Hand Landmark Detection with 3D pyramid</h1>
     <div id="liveView" class="videoView">
         <button id="webcamButton" class="mdc-button mdc-button--raised">
             <span class="mdc-button__ripple"></span>
             <span class="mdc-button__label">ENABLE WEBCAM</span>
         </button>
         <div style="position: relative;">
-            <video id="webcam" style="position: absolute; width: 640px; height: 512px;" autoplay playsinline></video>
+            <video id="webcam" style="position: absolute; width: 640px; height: 480px;" autoplay playsinline></video>
             <canvas class="output_canvas" id="output_canvas" style="position: absolute; left: 0px; top: 0px;"></canvas>
             <div id="threejs-container"></div>
         </div>
@@ -56,10 +56,26 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="./node_modules/@techstark/opencv-js/dist/opencv.js"></script>
+   
+
     <script type="module">
-        const height = 640
-        const width = 512
         import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
+
+        //screen and camera parameters:
+
+        const height = 480;
+        const width = 640;
+        const focalLength = width * 0.6
+        const center = [width / 2, height / 2];
+        const cameraMatrix = [
+        focalLength, 0, center[0], 
+        0, focalLength, center[1], 
+        0, 0, 1
+        ];
+        const distortion = [0, 0, 0, 0];
+        
+
 
         const demosSection = document.getElementById("liveView");
 
@@ -72,7 +88,7 @@
             const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
             handLandmarker = await HandLandmarker.createFromOptions(vision, {
                 baseOptions: {
-                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+                    modelAssetPath: `./models/hand_landmarker.task`,
                     delegate: "GPU"
                 },
                 runningMode: runningMode,
@@ -141,10 +157,41 @@
 
         threeJsContainer.appendChild(renderer.domElement);
 
-        const geometry = new THREE.ConeGeometry(0.05, 0.15, 32);
-        const material = new THREE.MeshBasicMaterial({ color: 0x808080 });
-        const cone = new THREE.Mesh(geometry, material);
-        scene.add(cone);
+        const geometry = new THREE.CylinderGeometry(0, 0.05, 0.15, 4);
+        const material = new THREE.MeshBasicMaterial({ color: 0x0000FF });
+        const pyramid = new THREE.Mesh(geometry, material);
+        
+        const edges = new THREE.EdgesGeometry(geometry);
+        const edgesMaterial = new THREE.LineBasicMaterial({ color: 0xFFFFFFFF });
+        const edgesMesh = new THREE.LineSegments(edges, edgesMaterial);
+
+        pyramid.add(edgesMesh);
+
+        scene.add(pyramid);
+
+        const material_norm = new THREE.MeshBasicMaterial({ color: 0x00000000 });
+        const pyramid_norm = new THREE.Mesh(geometry, material_norm);
+        
+        const edges_norm = new THREE.EdgesGeometry(geometry);
+        const edgesMesh_norm = new THREE.LineSegments(edges_norm, edgesMaterial);
+
+        pyramid.add(edgesMesh);
+        pyramid_norm.add(edgesMesh_norm)
+
+        const material_tvec = new THREE.MeshBasicMaterial({ color: 0xf00000 });
+        const pyramid_tvec = new THREE.Mesh(geometry, material_tvec);
+        
+        const edges_tvec = new THREE.EdgesGeometry(geometry);
+        const edgesMesh_tvec = new THREE.LineSegments(edges_tvec, edgesMaterial);
+
+        pyramid.add(edgesMesh);
+        pyramid_norm.add(edgesMesh_norm)
+        pyramid_tvec.add(edgesMesh_tvec)
+
+        scene.add(pyramid);
+        scene.add(pyramid_norm)
+        scene.add(pyramid_tvec)
+
 
         camera.position.z = 1;
 
@@ -157,7 +204,7 @@
         async function predictWebcam() {
             canvasElement.style.width = width + "px";
             canvasElement.style.height = height + "px";
-            console.log(canvasElement.style.width, ' ', canvasElement.style.height)
+            console.log(canvasElement.style.width, ' ', canvasElement.style.height);
             canvasElement.width = width;
             canvasElement.height = height;
 
@@ -169,17 +216,25 @@
             let startTimeMs = performance.now();
             if (lastVideoTime !== video.currentTime) {
                 lastVideoTime = video.currentTime;
-                results = handLandmarker.detectForVideo(video, startTimeMs);
+                results = await handLandmarker.detectForVideo(video, startTimeMs);
             }
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             if (results.landmarks) {
-                for (const landmarks of results.landmarks) {
+                for (let i = 0; i < results.landmarks.length; i++) {
+                    const landmarks = results.landmarks[i];
+                    const worldLandmarks = results.worldLandmarks ? results.worldLandmarks[i] : null;
+
+                    // 2D Landmarks (for drawing)
                     drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: "#00FF00", lineWidth: 5 });
                     drawLandmarks(canvasCtx, landmarks, { color: "#FF0000", lineWidth: 2 });
-                    updateConePosition(landmarks);  // Update cone position based on the index finger tip
-                    console.log(landmarks)
+
+                    // If world landmarks are provided, process them
+                    if (worldLandmarks) {
+                        updatepyramidPosition(landmarks, worldLandmarks);  // Update pyramid position based on world landmarks
+                    }
                 }
+
             }
             canvasCtx.restore();
 
@@ -188,26 +243,195 @@
             }
         }
 
-        function updateConePosition(landmarks) {
-            const tip = landmarks[8];
-            const base = landmarks[0]; // Use wrist as the base for orientation
 
-            // Convert landmark positions from normalized space to Three.js space
-            const x = (tip.x - 0.5) * frustumSize * aspect;
-            const y = -(tip.y - 0.5) * frustumSize;
-            const z = (tip.z - 0.5) * frustumSize; // Adjusted to positive depth values
+        function updatepyramidPosition(landmarks, worldlandmarks) {
 
-            cone.position.set(x, y, z);
+            pyramid.position.set(0, 0, 0); 
+            pyramid_norm.position.set(0.1, 0, 0)
+            pyramid_tvec.position.set(0.2, 0, 0)
 
-            // Calculate rotation
-            const dx = base.x - tip.x;
-            const dy = base.y - tip.y;
-            const dz = base.z - tip.z;
+            let quaternion = calculateFingerRotationpyramid(worldlandmarks, 'INDEX', false, false);
+            quaternion.x *= - 1
+            
+            quaternion.w *= - 1
+            pyramid.setRotationFromQuaternion(quaternion);
 
-            const angleX = Math.atan2(dy, dz);
-            const angleY = Math.atan2(dx, dz);
+            let quaternion_norm = calculateFingerRotationpyramid(landmarks);
+            quaternion_norm.x *= - 1
+            
+            quaternion_norm.w *= - 1
+            pyramid_norm.setRotationFromQuaternion(quaternion_norm);
 
+            const imagePoints = landmarks.map(
+             (l) => new THREE.Vector3(l.x * width, l.y * height, 0),
+            )
+
+            let quaternion_tvec = calculateFingerRotationpyramid(transformWorldPointsUsingPnP(cameraMatrix, distortion, worldlandmarks, imagePoints));
+            quaternion_tvec.x *= - 1
+            
+            quaternion_tvec.w *= - 1
+            pyramid_tvec.setRotationFromQuaternion(quaternion_tvec);
+
+
+            const rotation_90_z = new THREE.Quaternion()
+
+            rotation_90_z.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI /2 );
+            pyramid.applyQuaternion(rotation_90_z);
+            pyramid_norm.applyQuaternion(rotation_90_z);
+            pyramid_tvec.applyQuaternion(rotation_90_z);
+            
         }
+
+        function transformWorldPointsUsingPnP(
+            cameraMatrix,
+            distCoeffs,
+            worldPoints,
+            imagePoints
+            ) {
+            const objectPoints = worldPoints.map((p) => [p.x, p.y, p.z]); // Ensure the correct sign
+            const imagePointsCv = imagePoints.map((p) => [p.x, p.y]);
+
+            const objectPointsMat = cv.matFromArray(objectPoints.length, 1, cv.CV_32FC3, objectPoints.flat());
+            const imagePointsMat = cv.matFromArray(imagePointsCv.length, 1, cv.CV_32FC2, imagePointsCv.flat());
+            const cameraMatrixCv = cv.matFromArray(3, 3, cv.CV_64FC1, cameraMatrix);
+            const distCoeffsCv = cv.matFromArray(distCoeffs.length, 1, cv.CV_64FC1, distCoeffs);
+
+            const rvec = new cv.Mat();
+            const tvec = new cv.Mat();
+
+            const solvePnPMethod = cv.SOLVEPNP_EPNP;
+
+            cv.solvePnP(
+                objectPointsMat,
+                imagePointsMat,
+                cameraMatrixCv,
+                distCoeffsCv,
+                rvec,
+                tvec,
+                false,
+                solvePnPMethod
+            );
+
+            const rotMat = new cv.Mat();
+            cv.Rodrigues(rvec, rotMat);
+
+            // Create the transformation matrix
+            const CV_64F = cv.CV_64F;
+            const transformMat = cv.Mat.eye(4, 4, CV_64F); // 4x4 identity matrix
+            rotMat.copyTo(transformMat.rowRange(0, 3).colRange(0, 3)); // Copy rotation
+            tvec.copyTo(transformMat.rowRange(0, 3).col(3)); // Copy translation
+
+            // console.log("Rotation Vector (rvec):", rvec.data64F);
+            // console.log("Translation Vector (tvec):", tvec.data64F);
+
+            const finalTransform = new THREE.Matrix4().fromArray(transformMat.data64F); // Ensure the use of correct data type
+
+            const transformedWorldPoints = worldPoints.map((point) => {
+                const vector = new THREE.Vector4(point.x, point.y, point.z, 1).applyMatrix4(finalTransform);
+
+                if (vector.w !== 0) {
+                vector.divideScalar(vector.w);
+                }
+
+                return new THREE.Vector3(vector.x, vector.y, vector.z);
+            });
+
+            objectPointsMat.delete();
+            imagePointsMat.delete();
+            cameraMatrixCv.delete();
+            distCoeffsCv.delete();
+            rvec.delete();
+            tvec.delete();
+            rotMat.delete();
+            transformMat.delete();
+
+            return transformedWorldPoints;
+            }
+        
+        function calculateFingerRotationpyramid(points, finger_name = 'INDEX', fixed = false, abs = false) {
+            let idx_mcp, idx_pip, idx_mcp1, idx_mcp2;
+
+            switch(finger_name) {
+                case 'INDEX':
+                    idx_mcp = 5;
+                    idx_pip = 6;
+                    idx_mcp1 = 5;
+                    idx_mcp2 = 13;
+                    break;
+                case 'MIDDLE':
+                    idx_mcp = 9;
+                    idx_pip = 10;
+                    idx_mcp1 = 5;
+                    idx_mcp2 = 13;
+                    break;
+                case 'RING':
+                    idx_mcp = 13;
+                    idx_pip = 14;
+                    idx_mcp1 = 5;
+                    idx_mcp2 = 13;
+                    break;
+                case 'PINKY':
+                    idx_mcp = 17;
+                    idx_pip = 18;
+                    idx_mcp1 = 5;
+                    idx_mcp2 = 13;
+                    break;
+                default:  // THUMB
+                    idx_mcp = 2;
+                    idx_pip = 3;
+                    idx_mcp1 = 5;
+                    idx_mcp2 = 9;
+                    break;
+            }
+
+            
+            let point_mcp1 = new THREE.Vector3(points[idx_mcp1].x, points[idx_mcp1].y, points[idx_mcp1].z);
+            let point_mcp2 = new THREE.Vector3(points[idx_mcp2].x, points[idx_mcp2].y, points[idx_mcp2].z);
+            let point_pip = new THREE.Vector3(points[idx_pip].x, points[idx_pip].y, points[idx_pip].z);
+            let point_mcp = new THREE.Vector3(points[idx_mcp].x, points[idx_mcp].y, points[idx_mcp].z);
+            if (fixed == true){
+                point_mcp1 = new THREE.Vector3(points[idx_mcp1].x.toFixed(3), points[idx_mcp1].y.toFixed(3), points[idx_mcp1].z.toFixed(2));
+                point_mcp2 = new THREE.Vector3(points[idx_mcp2].x.toFixed(3), points[idx_mcp2].y.toFixed(3), points[idx_mcp2].z.toFixed(2));
+                point_pip = new THREE.Vector3(points[idx_pip].x.toFixed(3), points[idx_pip].y.toFixed(3), points[idx_pip].z.toFixed(2));
+                point_mcp = new THREE.Vector3(points[idx_mcp].x.toFixed(3), points[idx_mcp].y.toFixed(3), points[idx_mcp].z.toFixed(2));
+            }
+            if (abs == true){
+                point_mcp1 = new THREE.Vector3(points[idx_mcp1].x, Math.abs(points[idx_mcp1].y), Math.abs(points[idx_mcp1].z));
+                point_mcp2 = new THREE.Vector3(points[idx_mcp2].x, Math.abs(points[idx_mcp2].y), Math.abs(points[idx_mcp2].z));
+                point_pip = new THREE.Vector3(points[idx_pip].x, Math.abs(points[idx_pip].y), Math.abs(points[idx_pip].z));
+                point_mcp = new THREE.Vector3(points[idx_mcp].x, Math.abs(points[idx_mcp].y), Math.abs(points[idx_mcp].z));
+     
+            }
+
+            const base_vector = point_mcp2.clone().sub(point_mcp1).normalize();
+            const finger_vector = point_pip.clone().sub(point_mcp).normalize();
+
+            // Step 1: Align the Z axis with the finger vector
+            const zAxis = finger_vector.clone();
+
+            // Step 2: Calculate the X axis as the cross product of the finger vector and the base vector
+            let xAxis = new THREE.Vector3().crossVectors(finger_vector, base_vector).normalize();
+
+            // Handle the case where xAxis is undefined (when the vectors are parallel)
+            if (xAxis.length() < 1e-6) {
+                xAxis = new THREE.Vector3(1, 0, 0); // Arbitrary perpendicular axis
+                console.log('finger and base are parallel (wow)')
+            }
+
+            // Step 3: Calculate the Y axis as the cross product of the Z and X axes
+            const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize();
+
+            // Create a matrix from these axes
+            const rotation_matrix = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+
+            // Convert the rotation matrix to a quaternion
+            const quaternion = new THREE.Quaternion().setFromRotationMatrix(rotation_matrix);
+
+            return quaternion;
+        } 
+
+
+
     </script>
 </body>
 </html>
