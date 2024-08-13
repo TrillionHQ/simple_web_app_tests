@@ -101,6 +101,7 @@
         createHandLandmarker().then(() => {
             video.addEventListener("loadeddata", () => {
                 video.requestVideoFrameCallback(processVideoFrame);
+            console.log('videohandlandmarker created')
             });
         });
 
@@ -172,6 +173,8 @@
         animate();
 
         function processVideoFrame() {
+            framecount += 1
+            console.log('frame number ', framecount)
             if (!handLandmarker) {
                 // Если handLandmarker еще не инициализирован, просто пропускаем кадр
                 video.requestVideoFrameCallback(processVideoFrame);
@@ -191,8 +194,7 @@
             let startTimeMs = performance.now();
             if (lastVideoTime !== video.currentTime) {
                 lastVideoTime = video.currentTime;
-                framecount += 1
-                console.log('frame number ', framecount)
+                
                 results = handLandmarker.detectForVideo(video, startTimeMs);
             }
             canvasCtx.save();
@@ -223,15 +225,24 @@
             pyramid.position.set(0, 0, 0);
             pyramid_tvec.position.set(0.2, 0, 0);
 
-            const quaternion = calculateFingerRotationpyramid(worldlandmarks, 'INDEX');
+            let quaternion = calculateFingerRotationpyramid(worldlandmarks, 'INDEX');
+            quaternion.x *= -1;
+            quaternion.w *= -1;
             pyramid.setRotationFromQuaternion(quaternion);
 
             const imagePoints = landmarks.map(
                 (l) => new THREE.Vector3(l.x * width, l.y * height, 0)
             );
 
-            const quaternion_tvec = calculateFingerRotationpyramid(transformWorldPointsUsingPnP(cameraMatrix, distortion, worldlandmarks, imagePoints));
+            let quaternion_tvec = calculateFingerRotationpyramid(transformWorldPointsUsingPnP(cameraMatrix, distortion, worldlandmarks, imagePoints));
+            quaternion_tvec.x *= -1;
+            quaternion_tvec.w *= -1;
             pyramid_tvec.setRotationFromQuaternion(quaternion_tvec);
+
+            const rotation_90_z = new THREE.Quaternion();
+            rotation_90_z.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+            pyramid.applyQuaternion(rotation_90_z);
+            pyramid_tvec.applyQuaternion(rotation_90_z);
 
 
         }
