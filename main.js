@@ -26,8 +26,9 @@ const createHandLandmarker = async () => {
             baseOptions: {
                 modelAssetPath: `./models/hand_landmarker.task`,
                 delegate: "GPU",
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.7,
+                model_complexity: 0,
             },
             runningMode: runningMode,
             numHands: 2
@@ -172,16 +173,25 @@ function updatepyramidPosition(landmarks, worldlandmarks) {
     pyramid.position.set(0, 0, 0);
     pyramid_tvec.position.set(0.2, 0, 0);
 
-    const quaternion = calculateFingerRotationpyramid(worldlandmarks, 'INDEX');
+    let quaternion = calculateFingerRotationpyramid(worldlandmarks, 'INDEX');
     console.log(worldlandmarks, quaternion)
+    quaternion.x *= -1;
+    quaternion.w *= -1;
     pyramid.setRotationFromQuaternion(quaternion);
 
     const imagePoints = landmarks.map(
         (l) => new THREE.Vector3(l.x * width, l.y * height, 0)
     );
 
-    const quaternion_tvec = calculateFingerRotationpyramid(transformWorldPointsUsingPnP(cameraMatrix, distortion, worldlandmarks, imagePoints));
+    let quaternion_tvec = calculateFingerRotationpyramid(transformWorldPointsUsingPnP(cameraMatrix, distortion, worldlandmarks, imagePoints));
+    quaternion_tvec.x *= -1;
+    quaternion_tvec.w *= -1;
     pyramid_tvec.setRotationFromQuaternion(quaternion_tvec);
+
+    const rotation_90_z = new THREE.Quaternion();
+    rotation_90_z.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+    pyramid.applyQuaternion(rotation_90_z);
+    pyramid_tvec.applyQuaternion(rotation_90_z);
 
 
 }

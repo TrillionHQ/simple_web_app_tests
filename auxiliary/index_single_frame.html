@@ -54,7 +54,7 @@
         crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="./node_modules/@techstark/opencv-js/dist/opencv.js"></script>
+    <script src="../node_modules/@techstark/opencv-js/dist/opencv.js"></script>
 
     <script type="module">
         import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0";
@@ -80,10 +80,10 @@
         let imageElement;
 
         const createHandLandmarker = async () => {
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+            const vision = await FilesetResolver.forVisionTasks("../wasm");
             handLandmarker = await HandLandmarker.createFromOptions(vision, {
                 baseOptions: {
-                    modelAssetPath: `./models/hand_landmarker.task`,
+                    modelAssetPath: `../models/hand_landmarker.task`,
                     delegate: "GPU",
                     minDetectionConfidence: 0.7,
                     minTrackingConfidence: 0.7
@@ -117,9 +117,9 @@
         document.addEventListener("DOMContentLoaded", () => {
             const image = document.getElementById('image');
             //const filePath = 'frame_00252.jpg'; 
-            //const filePath = 'frame_00031.jpg';
+            const filePath = '../frames/frame_00029.jpg';
             //const filePath = 'frame_00414.jpg';
-            const filePath = './frames/frame_00433.jpg';
+            //const filePath = './frames/frame_00433.jpg';
 
             const url = filePath;
             image.src = url;
@@ -219,9 +219,9 @@
             if (results.landmarks) {
                 for (let i = 0; i < results.landmarks.length; i++) {
                     const landmarks = results.landmarks[i];
-                    //const worldLandmarks = results.worldLandmarks ? results.worldLandmarks[i] : null;
+                    const worldLandmarks = results.worldLandmarks ? results.worldLandmarks[i] : null;
 
-                    //console.log(worldLandmarks)
+                    console.log(worldLandmarks)
                     /*const worldLandmarks = [
                         {x: -0.01905483938753605, y: 0.024955522269010544, z: 0.07095880061388016, visibility: 0.0, presence: 0.0},
                         {x: -0.005250214599072933, y: 0.005958634428679943, z: 0.06056906282901764, visibility: 0.0, presence: 0.0},
@@ -247,7 +247,7 @@
                     ];*/
 
 
-                    const worldLandmarks = [
+                  /*   const worldLandmarks = [
                         { x: -0.04389508068561554, y: 0.021466463804244995, z: 0.04468243196606636, visibility: 0.0, presence: 0.0 },
                         { x: -0.026701614260673523, y: 0.00432171206921339, z: 0.040332648903131485, visibility: 0.0, presence: 0.0 },
                         { x: -0.019349955022335052, y: -0.003923323471099138, z: 0.032600920647382736, visibility: 0.0, presence: 0.0 },
@@ -269,15 +269,15 @@
                         { x: 0.005017668474465609, y: 0.005682588554918766, z: 0.003130958415567875, visibility: 0.0, presence: 0.0 },
                         { x: 0.023513738065958023, y: 0.01403122954070568, z: 0.00529585313051939, visibility: 0.0, presence: 0.0 },
                         { x: 0.040471188724040985, y: 0.01541751716285944, z: 0.01162559911608696, visibility: 0.0, presence: 0.0 }
-                    ];
+                    ]; */
 
-                    const modelPoints = worldLandmarks.map(l => {
+                    /* const modelPoints = worldLandmarks.map(l => {
                         return {
                             x: -l.x,
                             y: -l.y,
                             z: -l.z
                         };
-                    });
+                    }); */
 
                     drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, { color: "#00FF00", lineWidth: 5 });
                     drawLandmarks(canvasCtx, landmarks, { color: "#FF0000", lineWidth: 2 });
@@ -297,37 +297,31 @@
             pyramid_tvec.position.set(0.2, 0, 0);
 
             let quaternion = calculateFingerRotationpyramid(worldlandmarks, 'INDEX');
-            // quaternion.x *= -1;
-            //quaternion.w *= -1;
+            quaternion.x *= -1;
+            quaternion.w *= -1;
             //const given_quat_python = new THREE.Quaternion(0.38511948140999497,0.09093347773765635,0.8881145836472605,-0.2338088406756359)
             pyramid.setRotationFromQuaternion(quaternion);
-
-            let quaternion_norm = calculateFingerRotationpyramid(landmarks);
-          //  quaternion_norm.x *= -1;
-          //  quaternion_norm.w *= -1;
-            pyramid_norm.setRotationFromQuaternion(quaternion_norm);
 
             const imagePoints = landmarks.map(
                 (l) => new THREE.Vector3(l.x * width, l.y * height, 0)
             );
 
             let quaternion_tvec = calculateFingerRotationpyramid(transformWorldPointsUsingPnP(cameraMatrix, distortion, worldlandmarks, imagePoints));
-            console.log('quaternion tvec', quaternion_tvec)
+            //console.log('quaternion tvec', quaternion_tvec)
             //const given_quat = new THREE.Quaternion(-0.36107222, -0.46955088,  0.35836622,  0.72161103)
             //const given_quat = new THREE.Quaternion(0.3851194780733519, 0.09093348533208821, 0.888114589891071, -0.23380881950106747)
             // const given_quat = new THREE.Quaternion(0.43825628, -0.139357,    0.72158556,  -0.51751845)
             //console.log('given quat tvec ', given_quat)
-           // quaternion_tvec.x *= -1;
-           // quaternion_tvec.w *= -1;
+            quaternion_tvec.x *= -1;
+            quaternion_tvec.w *= -1;
             pyramid_tvec.setRotationFromQuaternion(quaternion_tvec);
 
-            console.log(quaternion_tvec)
+            //console.log(quaternion_tvec)
 
-            //const rotation_90_z = new THREE.Quaternion();
-            //rotation_90_z.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
-            //pyramid.applyQuaternion(rotation_90_z);
-            //pyramid_norm.applyQuaternion(rotation_90_z);
-            //pyramid_tvec.applyQuaternion(rotation_90_z);
+            const rotation_90_z = new THREE.Quaternion();
+            rotation_90_z.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+            pyramid.applyQuaternion(rotation_90_z);
+            pyramid_tvec.applyQuaternion(rotation_90_z);
         }
 
         function transformWorldPointsUsingPnP(cameraMatrix, distCoeffs, worldPoints, imagePoints) {
@@ -435,11 +429,6 @@
 
             let xAxis = new THREE.Vector3().crossVectors(finger_vector, base_vector).normalize();
 
-            if (xAxis.length() < 1e-6) {
-                xAxis = new THREE.Vector3(1, 0, 0);
-                console.log('finger and base are parallel (wow)')
-            }
-
             const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize();
 
             const rotation_matrix = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
@@ -447,18 +436,10 @@
             const quaternion = new THREE.Quaternion().setFromRotationMatrix(rotation_matrix);
 
             //return new THREE.Quaternion(-0.06408172, -0.43060711,  0.21559747,  0.87406452);
-            console.log('quaternion : ', quaternion)
+            //console.log('quaternion : ', quaternion)
             
-            const rotationY = new THREE.Quaternion();
-            rotationY.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI); 
+            return quaternion
 
-            const rotationX = new THREE.Quaternion();
-            rotationX.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI/2); 
-
-            let transformedQuaternion = quaternion.clone();
-            transformedQuaternion.multiply(rotationY).multiply(rotationX);
-            transformedQuaternion.x *= -1
-            return transformedQuaternion
         } 
     </script>
 </body>
