@@ -12,7 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="./node_modules/@techstark/opencv-js/dist/opencv.js"></script>
-    <script type="module" src="/landmarker_plus_tfjs-handpose-test.js"></script>
+    <script type="module" src="/handpose-detection.js"></script>
 
     
     <style>
@@ -50,9 +50,9 @@
 
 <body>
     <h1>Hand Landmark Detection with 3D Pyramid</h1>
-    <h2><p style = "color:blue"> norm handlandmarker</p>
-    <p style = "color: black"> handpose </p>
-    <p style = "color: red"> tvec world handlandmarker </p></h2>
+    <h2><p style = "color:blue"> 3D keypoints handpose-detection</p>
+    <!-- <p style = "color: black"> handpose </p> -->
+    <p style = "color: red"> tvec 3D keypoints handpose-detection </p></h2>
     <input type="file" id="videoFileInput" accept="video/*">
     <div id="liveView" class="videoView">
         <div style="position: relative;">
