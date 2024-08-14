@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     const modelConfig = {
         runtime: 'mediapipe', // or 'tfjs',
         solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
-        modelType: 'full'
+        modelType: 'lite'
     };
     model = await handPoseDetection.createDetector(handPoseDetection.SupportedModels.MediaPipeHands, modelConfig);
 
