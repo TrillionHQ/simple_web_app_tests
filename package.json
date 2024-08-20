@@ -1,7 +1,7 @@
 {
   "name": "trillion_simple_web",
   "version": "1.0.0",
-  "main": "app.js",
+  "main": "combined.js",
   "private": true,
   "type": "module",
   "scripts": {
@@ -18,7 +18,17 @@
     "@mediapipe/tasks-vision": "^0.10.14",
     "@techstark/opencv-js": "^4.10.0-beta.1",
     "@tensorflow-models/hand-pose-detection": "^2.0.1",
-    "opencv.js": "^1.2.1"
+    "opencv.js": "^1.2.1",
+    "1eurofilter": "^1.2.1",
+    "@tensorflow/tfjs": "^4.20.0",
+    "@tensorflow/tfjs-core": "^4.20.0",
+    "@tensorflow/tfjs-backend-webgl": "^4.20.0",
+    "@tensorflow/tfjs-converter": "^4.20.0",
+    "@mediapipe/hands": "^0.4.0",
+    "chart": "^0.1.2",
+    "chart.js": "^4.4.3",
+    "opencvjs": "^1.0.1"
+
   },
   "devDependencies": {
     "vite": "^5.4.0"

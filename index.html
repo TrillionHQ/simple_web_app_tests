@@ -12,7 +12,9 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="./node_modules/@techstark/opencv-js/dist/opencv.js"></script>
-    <script type="module" src="/mediapipe-hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script type="module" src = 'combined.js'>
+    </script>
 
     
     <style>
@@ -53,11 +55,11 @@
     <h2><p style = "color:blue"> 3D keypoints handpose-detection</p>
     <!-- <p style = "color: black"> handpose </p> -->
     <p style = "color: red"> tvec 3D keypoints handpose-detection </p></h2>
-    <input type="file" id="videoFileInput" accept="video/*">
     <div id="liveView" class="videoView">
         <div style="position: relative;">
-            <video id="webcam" style="position: absolute; width: 640px; height: 480px;" autoplay="false" playsinline controls></video>
-            <canvas class="output_canvas" id="output_canvas" style="position: absolute; left: 0px; top: 0px;"></canvas>
+            <video id="webcam" style="position: relative; width: 640px; height: 480px;" ></video>
+            <canvas class="output_canvas" id="output_canvas" style="position: relative;"></canvas>
+            <canvas id="output" width="640" height="480" style="position: relative;"></canvas>            
             <div id="threejs-container"></div>
         </div>
     </div>
