@@ -20,7 +20,7 @@ let video;
 document.addEventListener('DOMContentLoaded', async function () {
     // Set up models
     const modelConfig = {
-        runtime: 'mediapipe',
+        runtime: 'tfjs',
         solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
         modelType: 'lite'
     };
