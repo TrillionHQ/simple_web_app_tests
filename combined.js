@@ -1,5 +1,4 @@
 import * as handPoseDetection from '@tensorflow-models/hand-pose-detection';
-import * as tfjs from '@tensorflow/tfjs-backend-webgl';
 
 // Set up video parameters and camera matrix
 const height = 480;
@@ -27,7 +26,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     modelHandPose = await handPoseDetection.createDetector(handPoseDetection.SupportedModels.MediaPipeHands, modelConfig);
 
     // Load edge detection model
-    modelEdges = await tf.loadGraphModel('teed_model_tfjs/model.json');
+    modelEdges = await tf.loadGraphModel('teed_model_tfjs_16/model.json');
 
     // Setup camera
     video = document.getElementById("webcam");
@@ -91,31 +90,90 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     // Process each video frame
     async function processVideoFrame() {
-        if (!modelHandPose) {
-            console.log("Hand pose model not loaded.");
-            video.requestVideoFrameCallback(processVideoFrame);
-            return;
-        }
-
         if (!video.paused && !video.ended) {
             video.requestVideoFrameCallback(processVideoFrame);
         }
-
-        canvasElement.width = width;
-        canvasElement.height = height;
-
-        const predictions = await modelHandPose.estimateHands(video);
-        if (predictions.length > 0) {
-            for (let i = 0; i < predictions.length; i++) {
-                const keypoints3D = predictions[i].keypoints3D;
-                const keypoints = predictions[i].keypoints;
+    
+        try {
+            // Step 1: Capture the video frame as a tensor and keep it in float32 format
+            let tensorImage = tf.tidy(() => {
+                let image = tf.browser.fromPixels(video).toFloat(); // Keep it as float32
+                
+                // Resize the image to match the expected input shape for the edge detection model
+                image = tf.image.resizeBilinear(image, [352, 352]);
+    
+                // Explicitly keep the tensor on GPU
+                return tf.keep(image);
+            });
+    
+            // Measure time before handPose model execution
+            const startHandPose = performance.now();
+    
+            // Step 2: Use the tensor for handPose model
+            const handPosePredictions = await modelHandPose.estimateHands(tensorImage);
+    
+            // Measure time after handPose model execution
+            const endHandPose = performance.now();
+            const handPoseInferenceTime = endHandPose - startHandPose;
+            console.log(`HandPose Inference time: ${handPoseInferenceTime.toFixed(2)} ms`);
+    
+            // Measure time before edge detection model execution
+            const startTeed = performance.now();
+    
+            // Step 3: Apply the necessary transformations on the same tensor for the edge detection model
+            const edgeDetectionOutput = tf.tidy(() => {
+                const mean = tf.tensor([103.939, 116.779, 123.68], undefined, 'float32');
+                let processedImage = tensorImage.sub(mean); // Normalize
+                processedImage = processedImage.transpose([2, 0, 1]).expandDims(0); // Reshape as required to [1, 3, 352, 352]
+                
+                // Pass the processed image to the edge detection model
+                return modelEdges.execute({ input: processedImage });
+            });
+            
+    
+            // Measure time after edge detection model execution
+            const endTeed = performance.now();
+            const teedInferenceTime = endTeed - startTeed;
+            console.log(`TEED Inference time: ${teedInferenceTime.toFixed(2)} ms`);
+    
+            if (handPosePredictions.length > 0) {
+                const keypoints3D = handPosePredictions[0].keypoints3D;
+                const keypoints = handPosePredictions[0].keypoints;
                 updatepyramidPosition(keypoints3D, keypoints);
             }
+    
+            const output = edgeDetectionOutput[3];
+            const squeezedOutput = output.squeeze();
+            const reshapedOutput = squeezedOutput.expandDims(-1);
+    
+            const minVal = reshapedOutput.min();
+            const maxVal = reshapedOutput.max();
+            const normalizedOutput = reshapedOutput.sub(minVal).div(maxVal.sub(minVal));
+    
+            // Render the normalized result directly to the canvas
+            await tf.browser.toPixels(normalizedOutput, canvasElement);
+            renderer.render(scene, camera);
+    
+            // Dispose of any remaining intermediate tensors
+            tensorImage.dispose();
+            squeezedOutput.dispose();
+            reshapedOutput.dispose();
+            normalizedOutput.dispose();
+            minVal.dispose();
+            maxVal.dispose();
+    
+            if (Array.isArray(edgeDetectionOutput)) {
+                edgeDetectionOutput.forEach(tensor => tensor.dispose());
+            } else {
+                edgeDetectionOutput.dispose();
+            }
+    
+        } catch (err) {
+            console.error('Error during inference:', err);
         }
-
-        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-        renderer.render(scene, camera);
     }
+    
+
 
     // Function to update the pyramid's position based on landmarks
     function updatepyramidPosition(keypoints3D, keypoints) {
@@ -229,66 +287,9 @@ document.addEventListener('DOMContentLoaded', async function () {
         return transformedWorldPoints;
     }
 
-    // Edge detection function
-    async function detectEdges() {
-        const startTime = performance.now();
-        const canvas = document.getElementById('output');
-        const context = canvas.getContext('2d', { willReadFrequently: true });
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-        const inputTensor = preprocessImage(imageData);
-        const start = performance.now()
-        const outputTensor = await modelEdges.execute({ input: inputTensor });
-        const end = performance.now()
-        console.log(`Execution time inference: ${end - start} milliseconds`);
+    console.log('Current TensorFlow.js backend:', tf.getBackend());
 
-        const output = outputTensor[3];
-        const [min, max] = tf.tidy(() => [output.min(), output.max()]);
-        const normalizedOutput = tf.tidy(() => output.sub(min).div(max.sub(min)));
-        const scaledOutput = tf.tidy(() => normalizedOutput.mul(tf.scalar(255)).clipByValue(0, 255).cast('int32'));
-        const reshapedOutput = tf.tidy(() => scaledOutput.squeeze());
-        const resizedOutput = tf.tidy(() => tf.image.resizeBilinear(reshapedOutput.expandDims(2), [canvas.height, canvas.width]));
-        const resizedOutputData = resizedOutput.squeeze().arraySync();
 
-        const finalOutputData = new Uint8ClampedArray(canvas.width * canvas.height * 4);
-        for (let i = 0; i < canvas.height; i++) {
-            for (let j = 0; j < canvas.width; j++) {
-                const pixelValue = 255 - resizedOutputData[i][j];
-                const index = (i * canvas.width + j) * 4;
-                finalOutputData[index] = pixelValue;
-                finalOutputData[index + 1] = pixelValue;
-                finalOutputData[index + 2] = pixelValue;
-                finalOutputData[index + 3] = 255;
-            }
-        }
-        const outputImageData = new ImageData(finalOutputData, canvas.width, canvas.height);
-        context.putImageData(outputImageData, 0, 0);
-
-        inputTensor.dispose();
-        resizedOutput.dispose();
-        if (Array.isArray(outputTensor)) {
-            outputTensor.forEach(tensor => tensor.dispose());
-        } else {
-            outputTensor.dispose();
-        }
-
-        requestAnimationFrame(detectEdges);
-    }
-
-    function preprocessImage(imageData) {
-        return tf.tidy(() => {
-            let inputTensor = tf.browser.fromPixels(imageData)
-                .resizeBilinear([352, 352])
-                .toFloat();
-            const mean = tf.tensor([103.939, 116.779, 123.68]);
-            inputTensor = inputTensor.sub(mean);
-            inputTensor = inputTensor.transpose([2, 0, 1]);
-            inputTensor = inputTensor.expandDims(0);
-            return inputTensor;
-        });
-    }
-
-    processVideoFrame(); // Start hand pose detection
-    detectEdges();       // Start edge detection
+    processVideoFrame(); // Start hand pose detection and edge detection
 });
