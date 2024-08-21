@@ -17,6 +17,8 @@ let modelEdges;
 let video;
 
 document.addEventListener('DOMContentLoaded', async function () {
+    tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
+
     // Set up models
     const modelConfig = {
         runtime: 'tfjs',
@@ -122,7 +124,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     
             // Step 3: Apply the necessary transformations on the same tensor for the edge detection model
             const edgeDetectionOutput = tf.tidy(() => {
-                const mean = tf.tensor([103.939, 116.779, 123.68], undefined, 'float32');
+                const mean = tf.tensor([103.939, 116.779, 123.68]);//, undefined, 'float32');
                 let processedImage = tensorImage.sub(mean); // Normalize
                 processedImage = processedImage.transpose([2, 0, 1]).expandDims(0); // Reshape as required to [1, 3, 352, 352]
                 
@@ -286,6 +288,8 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         return transformedWorldPoints;
     }
+
+    tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
 
 
     console.log('Current TensorFlow.js backend:', tf.getBackend());
