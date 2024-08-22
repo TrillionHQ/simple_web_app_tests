@@ -1,4 +1,12 @@
 import * as handPoseDetection from '@tensorflow-models/hand-pose-detection';
+// Import @tensorflow/tfjs or @tensorflow/tfjs-core
+import * as tf from '@tensorflow/tfjs';
+// Adds the WASM backend to the global backend registry.
+import '@tensorflow/tfjs-backend-wasm';
+import {setWasmPaths} from '@tensorflow/tfjs-backend-wasm';
+
+
+
 
 // Set up video parameters and camera matrix
 const height = 480;
@@ -17,12 +25,20 @@ let modelEdges;
 let video;
 
 document.addEventListener('DOMContentLoaded', async function () {
-    tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
+    //tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
+
+    //setWasmPaths('192.168.0.101/node_modules/@tensorflow/tfjs-backend-wasm/dist');
+
+    await tf.setBackend('wasm');
+    await tf.ready();
+
+    console.log('Current TensorFlow.js backend:', tf.getBackend());
+   
 
     // Set up models
     const modelConfig = {
-        runtime: 'tfjs',
-        solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands',
+        runtime: 'mediapipe',
+        solutionPath: 'models',
         modelType: 'lite'
     };
     modelHandPose = await handPoseDetection.createDetector(handPoseDetection.SupportedModels.MediaPipeHands, modelConfig);
@@ -97,22 +113,16 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
     
         try {
-            // Step 1: Capture the video frame as a tensor and keep it in float32 format
+            // Step 1: Захват кадра видео в тензор в формате uint8
             let tensorImage = tf.tidy(() => {
-                let image = tf.browser.fromPixels(video).toFloat(); // Keep it as float32
-                
-                // Resize the image to match the expected input shape for the edge detection model
-                image = tf.image.resizeBilinear(image, [352, 352]);
-    
-                // Explicitly keep the tensor on GPU
-                return tf.keep(image);
+                return tf.browser.fromPixels(video); // Оставляем изображение в исходном формате uint8 (0-255)
             });
     
             // Measure time before handPose model execution
             const startHandPose = performance.now();
     
-            // Step 2: Use the tensor for handPose model
-            const handPosePredictions = await modelHandPose.estimateHands(tensorImage);
+            // Step 2: Используем изображение для MediaPipe
+            const handPosePredictions = await modelHandPose.estimateHands(video); // Передаем напрямую видео или uint8 тензор
     
             // Measure time after handPose model execution
             const endHandPose = performance.now();
@@ -122,16 +132,14 @@ document.addEventListener('DOMContentLoaded', async function () {
             // Measure time before edge detection model execution
             const startTeed = performance.now();
     
-            // Step 3: Apply the necessary transformations on the same tensor for the edge detection model
+            // Step 3: Применяем edge detection модель (сначала меняем размер тензора)
             const edgeDetectionOutput = tf.tidy(() => {
-                const mean = tf.tensor([103.939, 116.779, 123.68]);//, undefined, 'float32');
-                let processedImage = tensorImage.sub(mean); // Normalize
-                processedImage = processedImage.transpose([2, 0, 1]).expandDims(0); // Reshape as required to [1, 3, 352, 352]
-                
-                // Pass the processed image to the edge detection model
+                const mean = tf.tensor([103.939, 116.779, 123.68]);
+                let processedImage = tensorImage.toFloat().sub(mean); // Преобразуем в float32 и нормализуем
+                processedImage = tf.image.resizeBilinear(processedImage, [352, 352]); // Меняем размер изображения на [352, 352]
+                processedImage = processedImage.transpose([2, 0, 1]).expandDims(0);
                 return modelEdges.execute({ input: processedImage });
             });
-            
     
             // Measure time after edge detection model execution
             const endTeed = performance.now();
@@ -144,19 +152,20 @@ document.addEventListener('DOMContentLoaded', async function () {
                 updatepyramidPosition(keypoints3D, keypoints);
             }
     
+            // Обработка вывода edge detection
             const output = edgeDetectionOutput[3];
             const squeezedOutput = output.squeeze();
             const reshapedOutput = squeezedOutput.expandDims(-1);
     
+            // Приводим значения в диапазон [0, 1]
             const minVal = reshapedOutput.min();
             const maxVal = reshapedOutput.max();
             const normalizedOutput = reshapedOutput.sub(minVal).div(maxVal.sub(minVal));
     
-            // Render the normalized result directly to the canvas
             await tf.browser.toPixels(normalizedOutput, canvasElement);
             renderer.render(scene, camera);
     
-            // Dispose of any remaining intermediate tensors
+            // Освобождаем память от промежуточных тензоров
             tensorImage.dispose();
             squeezedOutput.dispose();
             reshapedOutput.dispose();
@@ -174,6 +183,8 @@ document.addEventListener('DOMContentLoaded', async function () {
             console.error('Error during inference:', err);
         }
     }
+    
+    
     
 
 
@@ -289,10 +300,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         return transformedWorldPoints;
     }
 
-    tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
-
-
-    console.log('Current TensorFlow.js backend:', tf.getBackend());
 
 
     processVideoFrame(); // Start hand pose detection and edge detection
