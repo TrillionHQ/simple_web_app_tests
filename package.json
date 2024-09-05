@@ -27,7 +27,6 @@
     "@tensorflow/tfjs-core": "^4.20.0",
     "chart": "^0.1.2",
     "chart.js": "^4.4.3",
-    "opencv.js": "^1.2.1",
     "opencvjs": "^1.0.1",
     "seedrandom": "^3.0.5",
     "webpack": "^5.93.0"

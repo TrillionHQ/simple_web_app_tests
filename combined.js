@@ -3,7 +3,7 @@ import * as handPoseDetection from '@tensorflow-models/hand-pose-detection';
 import * as tf from '@tensorflow/tfjs';
 // Adds the WASM backend to the global backend registry.
 import '@tensorflow/tfjs-backend-wasm';
-import {setWasmPaths} from '@tensorflow/tfjs-backend-wasm';
+import { setWasmPaths } from '@tensorflow/tfjs-backend-wasm';
 
 
 
@@ -29,11 +29,11 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     //setWasmPaths('192.168.0.101/node_modules/@tensorflow/tfjs-backend-wasm/dist');
 
-    await tf.setBackend('wasm');
+    await tf.setBackend('webgl');
     await tf.ready();
 
     console.log('Current TensorFlow.js backend:', tf.getBackend());
-   
+
 
     // Set up models
     const modelConfig = {
@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     modelHandPose = await handPoseDetection.createDetector(handPoseDetection.SupportedModels.MediaPipeHands, modelConfig);
 
     // Load edge detection model
-    modelEdges = await tf.loadGraphModel('teed_model_tfjs_16/model.json');
+    modelEdges = await tf.loadGraphModel('teed_model_tfjs/model.json');
 
     // Setup camera
     video = document.getElementById("webcam");
@@ -106,32 +106,31 @@ document.addEventListener('DOMContentLoaded', async function () {
     scene.add(pyramid_tvec);
     camera.position.z = 1;
 
-    // Process each video frame
     async function processVideoFrame() {
         if (!video.paused && !video.ended) {
             video.requestVideoFrameCallback(processVideoFrame);
         }
-    
+
         try {
             // Step 1: Захват кадра видео в тензор в формате uint8
             let tensorImage = tf.tidy(() => {
                 return tf.browser.fromPixels(video); // Оставляем изображение в исходном формате uint8 (0-255)
             });
-    
+
             // Measure time before handPose model execution
             const startHandPose = performance.now();
-    
+
             // Step 2: Используем изображение для MediaPipe
             const handPosePredictions = await modelHandPose.estimateHands(video); // Передаем напрямую видео или uint8 тензор
-    
+
             // Measure time after handPose model execution
             const endHandPose = performance.now();
             const handPoseInferenceTime = endHandPose - startHandPose;
             console.log(`HandPose Inference time: ${handPoseInferenceTime.toFixed(2)} ms`);
-    
+
             // Measure time before edge detection model execution
             const startTeed = performance.now();
-    
+
             // Step 3: Применяем edge detection модель (сначала меняем размер тензора)
             const edgeDetectionOutput = tf.tidy(() => {
                 const mean = tf.tensor([103.939, 116.779, 123.68]);
@@ -140,52 +139,218 @@ document.addEventListener('DOMContentLoaded', async function () {
                 processedImage = processedImage.transpose([2, 0, 1]).expandDims(0);
                 return modelEdges.execute({ input: processedImage });
             });
-    
+
             // Measure time after edge detection model execution
             const endTeed = performance.now();
             const teedInferenceTime = endTeed - startTeed;
             console.log(`TEED Inference time: ${teedInferenceTime.toFixed(2)} ms`);
-    
+
             if (handPosePredictions.length > 0) {
-                const keypoints3D = handPosePredictions[0].keypoints3D;
                 const keypoints = handPosePredictions[0].keypoints;
-                updatepyramidPosition(keypoints3D, keypoints);
+
+                // Преобразуем лэндмарки в пиксельные координаты изображения 352x352
+                const imageLandmarks = convertLandmarksToImageCoords(keypoints, 640, 480, 352, 352);
+
+                // Применяем фильтрацию контуров на основе преобразованных координат
+                let filteredOutput = applyMCP_PIPFiltering(edgeDetectionOutput[3], imageLandmarks);
+
+                // Проверяем, что filteredOutput не содержит недопустимые значения (NaN, Inf)
+                const containsNaN = filteredOutput.isNaN().any().dataSync()[0];
+                const containsInf = filteredOutput.isInf().any().dataSync()[0];
+
+                if (containsNaN || containsInf) {
+                    console.error("Ошибка: filteredOutput содержит недопустимые значения (NaN или Inf).");
+                } else {
+                    // Масштабируем значения на основе максимального абсолютного значения
+                    const absMaxVal = filteredOutput.abs().max();
+
+                    // Масштабируем значения через деление на максимальное абсолютное значение
+                    const scaledOutput = filteredOutput.div(absMaxVal);
+
+                    // Приведение значений к диапазону [0, 1] для визуализации
+                    const minVal = scaledOutput.min();
+                    const maxVal = scaledOutput.max();
+
+                    // Выполняем бинаризацию
+                    const binaryOutput = tf.greaterEqual(scaledOutput.sub(minVal).div(maxVal.sub(minVal)), 0.5);
+
+                    // Преобразуем бинарные значения в формат [0, 1]
+                    const normalizedOutput = binaryOutput.cast('float32'); // Приводим к float32 для работы с toPixels
+
+                    // Отображаем изображение
+                    await tf.browser.toPixels(normalizedOutput, canvasElement);
+
+
+                    // Освобождаем ресурсы
+                    absMaxVal.dispose();
+                    minVal.dispose();
+                    maxVal.dispose();
+                    scaledOutput.dispose();
+                    filteredOutput.dispose();
+                }
             }
-    
-            // Обработка вывода edge detection
-            const output = edgeDetectionOutput[3];
-            const squeezedOutput = output.squeeze();
-            const reshapedOutput = squeezedOutput.expandDims(-1);
-    
-            // Приводим значения в диапазон [0, 1]
-            const minVal = reshapedOutput.min();
-            const maxVal = reshapedOutput.max();
-            const normalizedOutput = reshapedOutput.sub(minVal).div(maxVal.sub(minVal));
-    
-            await tf.browser.toPixels(normalizedOutput, canvasElement);
+            else {
+                // Если нет лэндмарков, просто отображаем результат детекции краев
+                const output = edgeDetectionOutput[3];
+                const squeezedOutput = output.squeeze();
+
+                // Нормализуем значение в диапазоне от 0 до 1
+                const minVal = squeezedOutput.min();
+                const maxVal = squeezedOutput.max();
+                // Выполняем бинаризацию
+                const binaryOutput = tf.greaterEqual(squeezedOutput.sub(minVal).div(maxVal.sub(minVal)), 0.5);
+
+                // Преобразуем бинарные значения в формат [0, 1]
+                const normalizedOutput = binaryOutput.cast('float32'); // Приводим к float32 для работы с toPixels
+
+                // Отображаем изображение
+                await tf.browser.toPixels(normalizedOutput, canvasElement);
+
+
+                // Освобождаем ресурсы
+                squeezedOutput.dispose();
+                normalizedOutput.dispose();
+                minVal.dispose();
+                maxVal.dispose();
+            }
+
             renderer.render(scene, camera);
-    
+
             // Освобождаем память от промежуточных тензоров
             tensorImage.dispose();
-            squeezedOutput.dispose();
-            reshapedOutput.dispose();
-            normalizedOutput.dispose();
-            minVal.dispose();
-            maxVal.dispose();
-    
             if (Array.isArray(edgeDetectionOutput)) {
                 edgeDetectionOutput.forEach(tensor => tensor.dispose());
             } else {
                 edgeDetectionOutput.dispose();
             }
-    
+
         } catch (err) {
             console.error('Error during inference:', err);
         }
     }
-    
-    
-    
+
+    // Преобразование нормализованных координат лэндмарков в координаты пикселей изображения 352x352
+    function convertLandmarksToImageCoords(landmarks, inputWidth, inputHeight, targetWidth, targetHeight) {
+        // Преобразуем нормализованные координаты лэндмарков в координаты в пикселях
+        return landmarks.map(landmark => {
+            const x = landmark.x;  // Преобразование нормализованной координаты X в пиксели
+            const y = landmark.y; // Преобразование нормализованной координаты Y в пиксели
+
+            // Преобразуем координаты исходного изображения в координаты изображения 352x352
+            const x_new = (x / inputWidth) * targetWidth;
+            const y_new = (y / inputHeight) * targetHeight;
+
+            return { x: x_new, y: y_new };
+        });
+    }
+
+    // Пример функции для фильтрации контуров на основе MCP-PIP
+    function applyMCP_PIPFiltering(edgeTensor, keypoints) {
+        const mcpPipVectors = calculateMCP_PIPVectors(keypoints);
+
+        // Убираем лишние измерения тензора, чтобы получить форму [352, 352]
+        const squeezedEdgesTensor = edgeTensor.squeeze();
+
+        // Преобразуем тензор детекции краев в массив для постобработки
+        const edgesArray = squeezedEdgesTensor.arraySync(); // Получаем данные в массиве для обработки
+
+        // Пробегаемся по каждому пикселю и фильтруем его, если он рядом с MCP-PIP
+        for (let y = 0; y < edgesArray.length; y++) {
+            for (let x = 0; x < edgesArray[y].length; x++) {
+                const pixelPos = { x, y };
+
+                // Проверяем близость пикселя к MCP-PIP вектору каждого пальца
+                for (const vector of mcpPipVectors) {
+                    const distance = pointToLineDistance(pixelPos, vector.mcp, vector.pip);
+                    if (distance < vector.threshold) {
+                        edgesArray[y][x] = 0;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Преобразуем обратно в тензор с использованием правильной формы
+        const filteredTensor = tf.tensor(edgesArray, squeezedEdgesTensor.shape); // Используем форму [352, 352]
+        return filteredTensor;
+    }
+
+
+
+    // Расчет векторов MCP-PIP для каждого пальца
+    function calculateMCP_PIPVectors(keypoints) {
+        const fingers = ['index', 'middle', 'ring', 'pinky'];
+        const vectors = [];
+
+        // Получаем MCP точки среднего и безымянного пальцев
+        const middleMCP = getKeyPoint('middle_mcp', keypoints);
+        const ringMCP = getKeyPoint('ring_mcp', keypoints);
+
+        const standardDistance = 30;
+
+        if (middleMCP && ringMCP) {
+            // Вычисляем текущее расстояние между MCP среднего и безымянного пальцев
+            const currentDistance = euclideanDistance(middleMCP, ringMCP);
+
+            // Вычисляем коэффициент масштаба (относительно стандартного расстояния в 30 пикселей)
+            const scaleFactor = currentDistance / standardDistance;
+
+            // Пробегаемся по каждому пальцу и вычисляем пороговое значение для MCP-PIP
+            for (const finger of fingers) {
+                const mcp = getKeyPoint(finger + '_mcp', keypoints);
+                const pip = getKeyPoint(finger + '_pip', keypoints);
+
+                if (mcp && pip) {
+                    // Пропорционально изменяем порог (threshold)
+                    const threshold = 5 * scaleFactor;
+
+                    vectors.push({
+                        mcp,
+                        pip,
+                        threshold
+                    });
+                }
+            }
+        }
+
+        return vectors;
+    }
+
+    function euclideanDistance(point1, point2) {
+        return Math.sqrt(Math.pow(point1.x - point2.x, 2) + Math.pow(point1.y - point2.y, 2));
+    }
+
+
+    // Получение лэндмарков по имени
+    function getKeyPoint(name, keypoints) {
+        const fingerMap = {
+            'index_mcp': 5,
+            'index_pip': 6,
+            'middle_mcp': 9,
+            'middle_pip': 10,
+            'ring_mcp': 13,
+            'ring_pip': 14,
+            'pinky_mcp': 17,
+            'pinky_pip': 18
+        };
+
+        const index = fingerMap[name];
+        if (index !== undefined && keypoints[index]) {
+            return { x: keypoints[index].x, y: keypoints[index].y };
+        }
+        return null;
+    }
+
+    // Функция для расчета расстояния от точки до линии (вектора MCP-PIP)
+    function pointToLineDistance(point, lineStart, lineEnd) {
+        const a = lineStart.y - lineEnd.y;
+        const b = lineEnd.x - lineStart.x;
+        const c = lineStart.x * lineEnd.y - lineEnd.x * lineStart.y;
+        return Math.abs(a * point.x + b * point.y + c) / Math.sqrt(a * a + b * b);
+    }
+
+
+
 
 
     // Function to update the pyramid's position based on landmarks
